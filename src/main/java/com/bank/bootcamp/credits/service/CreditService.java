@@ -2,6 +2,7 @@ package com.bank.bootcamp.credits.service;
 
 import java.time.LocalDateTime;
 import java.util.Optional;
+import java.util.Random;
 import java.util.function.Predicate;
 import org.springframework.stereotype.Service;
 import org.springframework.util.ObjectUtils;
@@ -44,7 +45,11 @@ public class CreditService {
                 sink.complete();
             })
         )
-        .then(creditRepository.save(credit));
+        .then(Mono.just(credit).flatMap(cr -> {
+          cr.setCardNumber(generateCardNumber());
+          cr.setRegisterDate(LocalDateTime.now());
+          return creditRepository.save(cr);
+        }));
   }
   
   private <T> Mono<Void> check(T t, Predicate<T> predicate, String messageForException) {
@@ -64,6 +69,44 @@ public class CreditService {
     .concatWith(paidRepository.getSumByCreditId(creditId).switchIfEmpty(Mono.just(0d)))
     .reduce(0d, (a, b) -> a + b);
   }
+  
+  /*
+   * https://gist.github.com/josefeg/5781824
+   */
+  private String generateCardNumber() {
+    var random = new Random(System.currentTimeMillis());
+    var bin = "3353";
+    int randomNumberLength = 16 - (bin.length() + 1);
+
+    var builder = new StringBuilder(bin);
+    for (int i = 0; i < randomNumberLength; i++) {
+        int digit = random.nextInt(10);
+        builder.append(digit);
+    }
+
+    int checkDigit = this.getCheckDigit(builder.toString());
+    builder.append(checkDigit);
+    return builder.toString();
+  }
+  
+  /*
+   * https://gist.github.com/josefeg/5781824
+   */
+  private int getCheckDigit(String number) {
+    int sum = 0;
+    for (int i = 0; i < number.length(); i++) {
+        int digit = Integer.parseInt(number.substring(i, (i + 1)));
+        if ((i % 2) == 0) {
+            digit = digit * 2;
+            if (digit > 9) {
+                digit = (digit / 10) + (digit % 10);
+            }
+        }
+        sum += digit;
+    }
+    int mod = sum % 10;
+    return ((mod == 0) ? 0 : 10 - mod);
+}
 
   public Mono<String> chargeConsumptiom(CreateConsumptiomDTO consumptionDTO) {
     return Mono.just(consumptionDTO)
